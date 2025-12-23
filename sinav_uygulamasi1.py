@@ -2,8 +2,18 @@ import streamlit as st
 import time
 import random
 
-# --- SAYFA AYARLARI ---
+# --- SAYFA VE ARAYÜZ AYARLARI ---
 st.set_page_config(page_title="Ekonometri Sınavı", layout="centered")
+
+# Sağ üstteki Streamlit butonlarını gizlemek için CSS
+hide_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_style, unsafe_allow_html=True)
 
 # --- VERİ TABANI ---
 if 'questions' not in st.session_state:
@@ -14,7 +24,6 @@ if 'questions' not in st.session_state:
             "dogru": "Biased estimates", 
             "ipucu": "Model gerçeği tam yansıtmazsa tahminler sapar (bias)." 
         },
-        # Diğer sorular... (Sistem bunları 50'ye tamamlayacaktır)
         { "metin": "What does β0 represent in a simple linear regression model?", "siklar": ["The slope", "The intercept", "The error term", "The variance"], "dogru": "The intercept", "ipucu": "Y eksenini kestiği nokta." },
         { "metin": "Which method is most commonly used to estimate parameters in linear regression?", "siklar": ["Maximum likelihood", "Method of moments", "OLS", "WLS"], "dogru": "OLS", "ipucu": "Kareler toplamını minimize eder." }
     ]
@@ -37,10 +46,11 @@ if 'joker_50_used' not in st.session_state: st.session_state.joker_50_used = Fal
 if 'joker_hint_used' not in st.session_state: st.session_state.joker_hint_used = False
 if 'joker_ai_used' not in st.session_state: st.session_state.joker_ai_used = False
 if 'active_50_for_current' not in st.session_state: st.session_state.active_50_for_current = False
+if 'balloons_done' not in st.session_state: st.session_state.balloons_done = False
 
 # --- GİRİŞ EKRANI ---
 if st.session_state.step == "GIRIS":
-    st.title("🎓 Ekonometri Soru Bankası")
+    st.title("🎓 Ekonometri Sınavı")
     ad = st.text_input("Adınız:")
     soyad = st.text_input("Soyadınız:")
     if st.button("Sınava Başla"):
@@ -53,11 +63,34 @@ if st.session_state.step == "GIRIS":
 # --- SINAV EKRANI ---
 elif st.session_state.step == "SINAV":
     gecen = time.time() - st.session_state.start_time
-    kalan = max(0, (50 * 60) - gecen)
+    kalan_zaman = max(0, (50 * 60) - gecen)
     
+    # İstatistiklerin Hesaplanması
+    cevaplanan = len(st.session_state.answers)
+    toplam = 50
+    kalan_soru = toplam - (st.session_state.q_idx + 1)
+    bos_soru = (st.session_state.q_idx) - cevaplanan
+    if bos_soru < 0: bos_soru = 0
+
+    # Sidebar Panel
     st.sidebar.title(f"👤 {st.session_state.user_name}")
-    st.sidebar.metric("⏳ Kalan Süre", f"{int(kalan // 60)}:{int(kalan % 60):02d}")
+    st.sidebar.metric("⏳ Kalan Süre", f"{int(kalan_zaman // 60)}:{int(kalan_zaman % 60):02d}")
+    st.sidebar.write("---")
+    st.sidebar.write(f"✅ **Cevaplanan:** {cevaplanan}")
+    st.sidebar.write(f"⚪ **Boş Bırakılan:** {bos_soru}")
+    st.sidebar.write(f"📝 **Kalan Soru:** {max(0, toplam - (st.session_state.q_idx + 1))}")
     
+    # İlk 3 Soru Balon Kontrolü
+    if not st.session_state.balloons_done and st.session_state.q_idx >= 3:
+        dogru_ilk_uc = 0
+        for i in range(3):
+            if st.session_state.answers.get(i) == st.session_state.questions[i]['dogru']:
+                dogru_ilk_uc += 1
+        if dogru_ilk_uc == 3:
+            st.balloons()
+            st.toast("Harika başlangıç! İlk 3 soru doğru!", icon="🔥")
+            st.session_state.balloons_done = True
+
     st.progress((st.session_state.q_idx + 1) / 50)
     q = st.session_state.questions[st.session_state.q_idx]
     st.subheader(f"Soru {st.session_state.q_idx + 1}")
@@ -114,8 +147,6 @@ elif st.session_state.step == "SINAV":
 # --- SONUÇ EKRANI ---
 elif st.session_state.step == "SONUC":
     st.title("📊 Sınav Karnesi")
-    st.subheader(f"Sayın {st.session_state.user_name}, sınavınız tamamlandı.")
-    
     dogru = 0
     yanlis = 0
     bos = 0
@@ -123,26 +154,20 @@ elif st.session_state.step == "SONUC":
     for i in range(50):
         user_ans = st.session_state.answers.get(i)
         correct_ans = st.session_state.questions[i]['dogru']
-        if user_ans is None:
-            bos += 1
-        elif user_ans == correct_ans:
-            dogru += 1
-        else:
-            yanlis += 1
+        if user_ans is None: bos += 1
+        elif user_ans == correct_ans: dogru += 1
+        else: yanlis += 1
             
     puan = (dogru / 50) * 100
     
-    # İstatistik Tablosu
     st.write("---")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Toplam Soru", "50")
+    col1.metric("Toplam", "50")
     col2.metric("Doğru ✅", dogru)
     col3.metric("Yanlış ❌", yanlis)
     col4.metric("Boş ⚪", bos)
     
     st.metric("BAŞARI PUANI", f"%{puan}")
-
-    
 
     if st.button("🔄 Yeni Sınav"):
         st.session_state.clear()
